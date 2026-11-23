@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.security import hash_password
 from app.databases.models import Base, Category, MenuItem, Role, User
 from app.databases.session import engine
+from app.databases.upgrade import upgrade_endpoint_schema
 
 DATA_DIR = Path(__file__).with_name("data")
 
@@ -304,6 +305,7 @@ def initialize_database() -> tuple[int, int, int, int]:
     with engine.begin() as connection:
         Base.metadata.create_all(bind=connection)
         _upgrade_legacy_roles(connection)
+        upgrade_endpoint_schema(connection)
         with Session(bind=connection) as session:
             counts = seed_initial_data(session, admin_password)
             session.flush()

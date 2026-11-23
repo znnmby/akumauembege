@@ -7,9 +7,31 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.dependencies import DbSession
+from app.core.errors import fail
+from app.modules.auth.router import router as auth_router
+from app.modules.categories.router import router as categories_router
+from app.modules.menu_items.router import router as menu_items_router
+from app.modules.orders.router import router as orders_router
+from app.modules.realtime.router import router as realtime_router
+from app.modules.users.router import router as users_router
+
 app_name = os.environ["APP_NAME"]
 logger = logging.getLogger(app_name)
 app = FastAPI(title=app_name, version="1.0.0")
+
+for router in (
+    auth_router,
+    users_router,
+    categories_router,
+    menu_items_router,
+    orders_router,
+    realtime_router,
+):
+    app.include_router(router)
 
 
 @app.exception_handler(HTTPException)
@@ -76,5 +98,9 @@ async def root() -> dict[str, str]:
 
 
 @app.get("/health", tags=["Health"])
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health(db: DbSession) -> dict[str, str]:
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        fail(503, "Database tidak tersedia.", "DATABASE_UNAVAILABLE")
+    return {"status": "ok", "database": "ok"}
