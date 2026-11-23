@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "buzzcut"
+name = "APP_NAME=Cafe_MerahPutih"
 version = "0.1.0"
-description = "Buzzcut API built with FastAPI"
+description = ".... xxx [belum tau mau isi apa zuzur]"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
