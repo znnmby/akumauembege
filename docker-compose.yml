@@ -1,22 +1,14 @@
-services:
-  api:
-    image: python:3.11-slim
-    working_dir: /app
-    command: >-
-      sh -c "pip install --no-cache-dir --editable . &&
-      exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    volumes:
-      - .:/app
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    depends_on:
-      postgres:
-        condition: service_healthy
+x-api-base: &api-base
+  image: python:3.11-slim
+  working_dir: /app
+  volumes:
+    - .:/app
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 
+services:
   postgres:
     image: postgres:16-alpine
     environment:
@@ -32,6 +24,27 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  database-init:
+    <<: *api-base
+    command: >-
+      sh -c "pip install --no-cache-dir --editable . &&
+      python -m app.databases.script"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *api-base
+    command: >-
+      sh -c "pip install --no-cache-dir --editable . &&
+      exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

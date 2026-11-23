@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Nasi Goreng",
+    "category_name": "Makanan",
+    "is_available": true
+  },
+  {
+    "name": "Mi Goreng",
+    "category_name": "Makanan",
+    "is_available": true
+  },
+  {
+    "name": "Kopi Hitam",
+    "category_name": "Minuman",
+    "is_available": true
+  },
+  {
+    "name": "Teh Manis",
+    "category_name": "Minuman",
+    "is_available": true
+  }
+]
