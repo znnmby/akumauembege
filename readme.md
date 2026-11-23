@@ -1,4 +1,4 @@
-# Buzzcut
+# Cafe_MerahPutih
 
 API minimal menggunakan FastAPI. Membutuhkan Python 3.11 atau lebih baru.
 
@@ -37,5 +37,5 @@ curl --fail http://127.0.0.1:8000/
 Respons:
 
 ```json
-{"message":"Buzzcut API"}
+{"message":"Cafe_MerahPutih API"}
 ```
