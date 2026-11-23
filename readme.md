@@ -30,9 +30,16 @@ docker compose up
 ```
 
 Compose memuat variabel dari `.env`, menjalankan PostgreSQL, lalu menjalankan
-`database-init` untuk membuat tabel dan memuat data JSON sebelum API dimulai.
+`database-init` untuk membuat/memperbarui tabel dan memuat data role, kategori,
+menu, dan user dari JSON sebelum API dimulai. Folder JSON dipasang read-only.
 
 Hentikan layanan dengan `docker compose down`.
+
+Setelah menambah data JSON, jalankan seed ulang tanpa menghapus volume PostgreSQL:
+
+```bash
+docker compose run --rm database-init
+```
 
 ### Inisialisasi database
 

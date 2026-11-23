@@ -29,7 +29,15 @@ services:
     <<: *api-base
     command: >-
       sh -c "pip install --no-cache-dir --editable . &&
-      python -m app.databases.script"
+      exec python -m app.databases.script"
+    volumes:
+      - .:/app
+      - type: bind
+        source: ./app/databases/data
+        target: /app/app/databases/data
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       postgres:
         condition: service_healthy

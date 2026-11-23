@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr = Field(min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=60, gt=0)
+    refresh_token_expire_days: int = Field(default=7, gt=0)
     initial_admin_password: SecretStr | None = Field(default=None, min_length=12)
 
 @lru_cache

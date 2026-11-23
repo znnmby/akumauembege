@@ -31,6 +31,7 @@ class Role(Base):
 
 
 class OrderStatus(StrEnum):
+    PENDING = "PENDING"
     QUEUED = "QUEUED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
@@ -94,6 +95,7 @@ class MenuItem(Base):
         server_default=func.now(),
         nullable=False,
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     category: Mapped[Category] = relationship(back_populates="menu_items")
     order_items: Mapped[list[OrderItem]] = relationship(back_populates="menu_item")
@@ -118,8 +120,8 @@ class Order(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    queue_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    queue_date: Mapped[date] = mapped_column(Date, nullable=False)
+    queue_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    queue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[OrderStatus] = mapped_column(
         SqlEnum(
             OrderStatus,
@@ -127,8 +129,8 @@ class Order(Base):
             native_enum=False,
             create_constraint=True,
         ),
-        default=OrderStatus.QUEUED,
-        server_default=OrderStatus.QUEUED.value,
+        default=OrderStatus.PENDING,
+        server_default=OrderStatus.PENDING.value,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -140,6 +142,9 @@ class Order(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_method: Mapped[str | None] = mapped_column(String(20))
 
     customer: Mapped[User] = relationship(
         back_populates="customer_orders",
@@ -174,3 +179,24 @@ class OrderItem(Base):
 
     order: Mapped[Order] = relationship(back_populates="items")
     menu_item: Mapped[MenuItem] = relationship(back_populates="order_items")
+
+
+class QueueCounter(Base):
+    __tablename__ = "queue_counters"
+
+    queue_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
