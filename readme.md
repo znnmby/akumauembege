@@ -23,6 +23,17 @@ python -m uvicorn app.main:app --reload --env-file .env
 Opsi `--env-file` memuat konfigurasi `.env` sebelum aplikasi diimpor.
 `--reload` hanya untuk pengembangan lokal.
 
+### Docker Compose
+
+```bash
+docker compose up
+```
+
+Compose memuat variabel dari `.env`, menjalankan PostgreSQL, dan menghubungkan API
+ke database melalui hostname internal `postgres`.
+
+Hentikan layanan dengan `docker compose down`.
+
 - API: http://127.0.0.1:8000/
 - Swagger UI: http://127.0.0.1:8000/docs
 - ReDoc: http://127.0.0.1:8000/redoc
