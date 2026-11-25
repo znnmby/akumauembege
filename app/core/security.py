@@ -1,17 +1,13 @@
-"""Password hashing and session-bound JWT primitives."""
-
 from __future__ import annotations
-
-from datetime import datetime, timezone
-from uuid import UUID
 
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from datetime import datetime, timezone
 from pydantic import ValidationError
-
+from uuid import UUID
 from app.core.config import Settings
-from app.modules.auth.schemas import JWTClaims
+from app.schemas import JWTClaims
 
 
 _password_hasher = PasswordHasher()

@@ -1,1 +1,1 @@
-"""HTTP and GraphQL transport layer."""
+"""HTTP endpoints and GraphQL queries, grouped by feature."""

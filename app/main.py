@@ -1,25 +1,26 @@
-"""Embege ASGI application and dependency lifecycle."""
-
 from __future__ import annotations
-
+import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.api.graphql.schema import create_graphql_router
-from app.api.rest.router import router as rest_router
+from typing import Literal
+from app.api.auth import router as auth_router
+from app.services.catalog import CatalogLoader, CatalogService
 from app.core.config import get_settings
-from app.core.error_handlers import register_error_handlers
-from app.core.logging import configure_logging
-from app.core.rate_limit import RateLimiter
-from app.db.init_db import initialize_database
-from app.db.session import create_database
-from app.integrations.llm.client import LLMClient
-from app.integrations.redis import close_redis_client, create_redis_client
-from app.modules.catalog.loader import CatalogLoader
-from app.modules.catalog.service import CatalogService
+from app.db import create_database, initialize_database
+from app.core.errors import register_error_handlers
+from app.api.graphql import create_graphql_router
+from app.services.llm import LLMClient
+from app.core.rate_limit import RateLimiter, close_redis_client, create_redis_client
+from app.api.recommendations import router as recommendations_router
+
+
+def configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 @asynccontextmanager
@@ -73,7 +74,12 @@ def create_app() -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
         )
 
-    app.include_router(rest_router)
+    @app.get("/health", tags=["health"])
+    async def health() -> dict[str, Literal["ok"]]:
+        return {"status": "ok"}
+
+    app.include_router(auth_router)
+    app.include_router(recommendations_router)
     app.include_router(create_graphql_router(settings))
     return app
 

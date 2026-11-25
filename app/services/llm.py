@@ -1,22 +1,19 @@
-"""Single-call, strict-JSON menu-selection client."""
-
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-from pathlib import Path
-from typing import Any
-
 from openai import APIStatusError, APITimeoutError, AsyncOpenAI, OpenAIError
+from pathlib import Path
 from pydantic import ValidationError
-
+from typing import Any
 from app.core.config import Settings
-from app.integrations.llm.schemas import LLMSelectionRequest, LLMSelectionResponse
+from app.schemas import LLMSelectionRequest, LLMSelectionResponse
+
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "select_menu.txt"
+DEFAULT_PROMPT_PATH = Path(__file__).resolve().parents[1] / "data" / "select_menu.txt"
 
 
 class LLMClientError(RuntimeError):

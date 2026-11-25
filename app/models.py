@@ -1,16 +1,15 @@
-"""Centralized SQLAlchemy definitions for every PostgreSQL table."""
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+class Base(DeclarativeBase):
+    pass
 
 
 def _utc_now() -> datetime:

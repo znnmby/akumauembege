@@ -1,21 +1,17 @@
-"""Redis-backed rolling limits and recommendation concurrency control."""
-
 from __future__ import annotations
 
 import hashlib
 import hmac
 import math
 from dataclasses import dataclass
-from ipaddress import ip_address
-from typing import Sequence
-from uuid import UUID, uuid4
-
 from fastapi import Request
+from ipaddress import ip_address
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-
+from typing import Sequence
+from uuid import UUID, uuid4
 from app.core.config import Settings
-from app.core.exceptions import AppError
+from app.core.errors import AppError
 
 
 _ROLLING_LIMIT_SCRIPT = """
@@ -293,3 +289,15 @@ def get_client_ip(request: Request, trusted_proxy_ips: Sequence[str]) -> str:
         if address not in trusted:
             return address
     return chain[0] if chain else normalized_peer
+
+
+def create_redis_client(settings: Settings) -> Redis:
+    return Redis.from_url(
+        settings.redis_url,
+        encoding="utf-8",
+        decode_responses=True,
+    )
+
+
+async def close_redis_client(client: Redis) -> None:
+    await client.aclose()

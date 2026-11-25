@@ -4,14 +4,36 @@ services:
   api:
     build:
       context: .
+    init: true
     env_file:
       - .env
     environment:
+      APP_ENV: ${APP_ENV:?Isi APP_ENV di .env}
+      LOG_LEVEL: ${LOG_LEVEL:?Isi LOG_LEVEL di .env}
       DB_HOST: db
       DB_PORT: "5432"
-      REDIS_URL: redis://redis:6379/0
+      DB_NAME: ${DB_NAME:?Isi DB_NAME di .env}
+      DB_USER: ${DB_USER:?Isi DB_USER di .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Isi DB_PASSWORD di .env}
+      REDIS_URL: ${REDIS_URL:?Isi REDIS_URL di .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Isi JWT_SECRET_KEY minimal 32 byte di .env}
+      LLM_API_KEY: ${LLM_API_KEY:?Isi LLM_API_KEY di .env}
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - ${API_PORT:?Isi API_PORT di .env}
+      - --workers
+      - ${UVICORN_WORKERS:?Isi UVICORN_WORKERS di .env}
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - ${FORWARDED_ALLOW_IPS:?Isi FORWARDED_ALLOW_IPS di .env}
+      - --timeout-graceful-shutdown
+      - "20"
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${API_PORT:?Isi API_PORT di .env}:${API_PORT:?Isi API_PORT di .env}"
     depends_on:
       db:
         condition: service_healthy
@@ -22,7 +44,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${API_PORT:?Isi API_PORT di .env}/health', timeout=2).read()"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,9 +54,9 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${DB_NAME:-embege}
-      POSTGRES_USER: ${DB_USER:-embege}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      POSTGRES_DB: ${DB_NAME:?Isi DB_NAME di .env}
+      POSTGRES_USER: ${DB_USER:?Isi DB_USER di .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Isi DB_PASSWORD di .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
