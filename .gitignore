@@ -5,6 +5,10 @@ venv/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+secrets/
 *.egg-info/
 build/
 dist/

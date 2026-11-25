@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "menus": [
+    {
+      "id": "menu-ikan",
+      "name": "Paket Ikan dan Nasi",
+      "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
+      "is_active": true,
+      "ascii_art": [
+        "+-------+",
+        "| IKAN  |",
+        "| NASI  |",
+        "+-------+"
+      ]
+    },
+    {
+      "id": "menu-ayam",
+      "name": "Paket Ayam dan Sayur",
+      "description": "Paket katalog dengan nasi, hidangan ayam, sayur, dan buah sebagai contoh pilihan menu.",
+      "is_active": true,
+      "ascii_art": [
+        "+-------+",
+        "| AYAM  |",
+        "| SAYUR |",
+        "+-------+"
+      ]
+    },
+    {
+      "id": "menu-nabati",
+      "name": "Paket Tempe dan Telur",
+      "description": "Paket katalog dengan nasi, tempe, telur, sayur, dan buah sebagai contoh pilihan menu.",
+      "is_active": true,
+      "ascii_art": [
+        "+-------+",
+        "| TEMPE |",
+        "| TELUR |",
+        "+-------+"
+      ]
+    }
+  ]
+}

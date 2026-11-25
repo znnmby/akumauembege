@@ -1,1 +1,1 @@
-"""Cafe_MerahPutih API package."""
+"""Embege API package."""
