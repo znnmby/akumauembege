@@ -59,12 +59,10 @@ def bad_user_input(message: str) -> NoReturn:
 
     raise GraphQLError(message, extensions={"code": "BAD_USER_INPUT"})
 
-
 def validate_first(first: int, *, maximum: int) -> int:
     if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= maximum:
         bad_user_input(f"first harus antara 1 dan {maximum}.")
     return first
-
 
 def normalize_search(search: str | None) -> str | None:
     if search is None:
