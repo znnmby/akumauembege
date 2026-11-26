@@ -62,14 +62,9 @@ class Settings(BaseSettings):
     change_password_window_seconds: int = Field(gt=0)
     me_limit: int = Field(gt=0)
     me_window_seconds: int = Field(gt=0)
-    graphql_limit: int = Field(gt=0)
-    graphql_window_seconds: int = Field(gt=0)
-
-    graphql_max_depth: int = Field(gt=0)
-    graphql_max_complexity: int = Field(gt=0)
-    graphql_max_page_size: int = Field(ge=20, le=100)
-    graphql_max_query_length: int = Field(gt=0)
-    graphql_ide_enabled: bool
+    read_limit: int = Field(gt=0)
+    read_window_seconds: int = Field(gt=0)
+    read_max_page_size: int = Field(ge=20, le=100)
 
     cors_allowed_origins: list[str]
     trusted_proxy_ips: list[str]

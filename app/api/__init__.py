@@ -1,1 +1,1 @@
-"""HTTP endpoints and GraphQL queries, grouped by feature."""
+"""REST endpoints, grouped by feature."""

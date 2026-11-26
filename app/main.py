@@ -10,7 +10,7 @@ from app.services.catalog import CatalogLoader, CatalogService
 from app.core.config import get_settings
 from app.db import create_database, initialize_database
 from app.core.errors import register_error_handlers
-from app.api.graphql import create_graphql_router
+from app.api.menus import router as menus_router
 from app.services.llm import LLMClient
 from app.core.rate_limit import RateLimiter, close_redis_client, create_redis_client
 from app.api.recommendations import router as recommendations_router
@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(recommendations_router)
-    app.include_router(create_graphql_router(settings))
+    app.include_router(menus_router)
     return app
 
 

@@ -2,21 +2,30 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
-from app.api.auth import CurrentUser, get_rate_limiter, get_session_factory
+from app.api.auth import (
+    AuthenticatedReadUser,
+    CurrentUser,
+    get_rate_limiter,
+    get_session_factory,
+    get_settings_from_request,
+)
 from app.services.catalog import CatalogService
 from app.core.errors import AppError
+from app.core.pagination import decode_history_cursor, encode_history_cursor, validate_limit
 from app.services.llm import LLMClient, LLMInvalidResponseError, LLMTimeoutError, LLMUnavailableError
 from app.models import Recommendation
 from app.core.rate_limit import RateLimiter
 from app.schemas import (
     LLMCandidate,
     LLMSelectionRequest,
+    MenuSnapshot,
+    PaginatedResponse,
     RecommendationCreateRequest,
     RecommendationResponse,
 )
@@ -107,6 +116,67 @@ class RecommendationService:
         self._rate_limiter = rate_limiter
         self._session_factory = session_factory
         self._repository = repository or RecommendationRepository()
+
+    @staticmethod
+    def _response(record: Recommendation) -> RecommendationResponse:
+        return RecommendationResponse(
+            id=record.id,
+            region_name=record.region_name,
+            geographic_description=record.geographic_description,
+            selection_reason=record.selection_reason,
+            menu=MenuSnapshot.model_validate(record.menu_snapshot),
+            created_at=record.created_at,
+        )
+
+    async def list_for_user(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        after: str | None,
+    ) -> PaginatedResponse[RecommendationResponse]:
+        cursor = decode_history_cursor(after, user_id)
+        try:
+            async with self._session_factory() as session:
+                records, has_next_page = await self._repository.list_for_user(
+                    session, user_id=user_id, first=limit, after=cursor,
+                )
+        except SQLAlchemyError as exc:
+            raise AppError(
+                status_code=503,
+                code="DATABASE_UNAVAILABLE",
+                message="Layanan riwayat tidak tersedia.",
+            ) from exc
+        return PaginatedResponse(
+            items=[self._response(record) for record in records],
+            next_cursor=(
+                encode_history_cursor(records[-1].created_at, records[-1].id, user_id)
+                if has_next_page else None
+            ),
+            has_next_page=has_next_page,
+        )
+
+    async def get_for_user(
+        self, *, user_id: UUID, recommendation_id: UUID,
+    ) -> RecommendationResponse:
+        try:
+            async with self._session_factory() as session:
+                record = await self._repository.get_for_user(
+                    session, user_id=user_id, recommendation_id=recommendation_id,
+                )
+        except SQLAlchemyError as exc:
+            raise AppError(
+                status_code=503,
+                code="DATABASE_UNAVAILABLE",
+                message="Layanan riwayat tidak tersedia.",
+            ) from exc
+        if record is None:
+            raise AppError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Rekomendasi tidak ditemukan.",
+            )
+        return self._response(record)
 
     async def create(
         self,
@@ -232,4 +302,28 @@ async def create_recommendation(
     return await _service(request).create(
         user_id=current_user.user_id,
         request=body,
+    )
+
+
+@router.get("", response_model=PaginatedResponse[RecommendationResponse])
+async def list_recommendations(
+    request: Request,
+    current_user: AuthenticatedReadUser,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    after: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+) -> PaginatedResponse[RecommendationResponse]:
+    validate_limit(limit, maximum=get_settings_from_request(request).read_max_page_size)
+    return await _service(request).list_for_user(
+        user_id=current_user.user_id, limit=limit, after=after,
+    )
+
+
+@router.get("/{recommendation_id}", response_model=RecommendationResponse)
+async def get_recommendation(
+    recommendation_id: UUID,
+    request: Request,
+    current_user: AuthenticatedReadUser,
+) -> RecommendationResponse:
+    return await _service(request).get_for_user(
+        user_id=current_user.user_id, recommendation_id=recommendation_id,
     )

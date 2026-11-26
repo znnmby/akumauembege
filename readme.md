@@ -6,7 +6,7 @@ Embege adalah backend API-only yang memilih satu paket menu MBG dari katalog JSO
 
 Salin `.env.example` menjadi `.env`, lalu isi sekurangnya `DB_PASSWORD`, `JWT_SECRET_KEY`, `LLM_API_KEY`, dan `LLM_MODEL`. `JWT_SECRET_KEY` harus berupa rahasia acak minimal 32 byte. Jangan commit `.env`.
 
-`app/core/config.py` tidak menyimpan nilai bawaan: seluruh 43 pengaturan wajib
+`app/core/config.py` tidak menyimpan nilai bawaan: seluruh pengaturan wajib
 berasal dari environment atau `.env`, dan aplikasi gagal start dengan daftar
 field yang hilang bila ada yang belum diisi. `.env.example` memuat semua kunci
 yang dibutuhkan.
@@ -45,7 +45,6 @@ healthcheck), `UVICORN_WORKERS`, dan `FORWARDED_ALLOW_IPS` (isi dengan IP proxy
 tepercaya bila ada reverse proxy di depan API).
 
 - OpenAPI: <http://127.0.0.1:8000/docs>
-- GraphQL: <http://127.0.0.1:8000/graphql>
 - Liveness: <http://127.0.0.1:8000/health>
 
 Seluruh definisi tabel PostgreSQL (`User`, `AuthSession`, dan `Recommendation`) dipusatkan di `app/models.py`. Repository pada setiap modul mengimpor model dari file tersebut. Pada startup, `app/db.py` mendaftarkan seluruh model dan membuat tabel yang belum ada dengan SQLAlchemy `create_all`. Mekanisme ini tidak memigrasikan tabel lama; perubahan struktur tabel harus ditangani manual sebelum deployment berikutnya.
@@ -71,44 +70,46 @@ curl -sS http://127.0.0.1:8000/recommendations \
 
 `POST /auth/logout` mencabut sesi token aktif. `POST /auth/change-password` mencabut seluruh sesi pengguna, sehingga pengguna perlu login kembali.
 
-## Contoh GraphQL
+## Katalog dan riwayat melalui REST
 
-Katalog bersifat publik:
+| Method | Endpoint | Akses | Kegunaan |
+| --- | --- | --- | --- |
+| `GET` | `/menus` | Publik | Daftar menu aktif dan pencarian |
+| `GET` | `/menus/{menu_id}` | Publik | Detail menu aktif |
+| `GET` | `/recommendations` | Bearer token | Riwayat rekomendasi pengguna aktif |
+| `GET` | `/recommendations/{recommendation_id}` | Bearer token | Detail rekomendasi milik pengguna aktif |
+| `POST` | `/recommendations` | Bearer token | Membuat rekomendasi |
 
-```graphql
-query Menus($after: String) {
-  menus(search: "ikan", first: 20, after: $after) {
-    edges {
-      cursor
-      node { id name description asciiArt }
-    }
-    pageInfo { endCursor hasNextPage }
-  }
-}
+Daftar menu menerima `search` (maksimal 150 karakter). Kedua endpoint daftar
+menerima `limit` (default 20, maksimal `READ_MAX_PAGE_SIZE`) dan `after` untuk
+cursor halaman berikutnya:
+
+```bash
+curl -sS --get http://127.0.0.1:8000/menus \
+  --data-urlencode 'search=ikan' --data-urlencode 'limit=20'
+
+curl -sS --get http://127.0.0.1:8000/recommendations \
+  -H 'Authorization: Bearer ACCESS_TOKEN' --data-urlencode 'limit=20'
 ```
 
-Riwayat membutuhkan header `Authorization: Bearer ACCESS_TOKEN`:
+Respons daftar berbentuk `{"items": [...], "next_cursor": "...", "has_next_page": true}`.
+Kirim nilai `next_cursor` sebagai `after` untuk melanjutkan; pertahankan `search`
+yang sama untuk katalog. Pada halaman terakhir, `next_cursor` bernilai `null`
+dan `has_next_page` bernilai `false`. Katalog diurutkan menurut ID menaik;
+riwayat menurut waktu pembuatan lalu ID menurun. Cursor riwayat hanya berlaku
+untuk pengguna yang sama.
 
-```graphql
-query MyHistory($after: String) {
-  myHistory(first: 20, after: $after) {
-    edges {
-      cursor
-      node {
-        id
-        regionName
-        geographicDescription
-        selectionReason
-        menu { id name description asciiArt }
-        createdAt
-      }
-    }
-    pageInfo { endCursor hasNextPage }
-  }
-}
-```
+Detail menu dan elemen `items` katalog memakai field `id`, `name`, `description`,
+dan `ascii_art`. Detail rekomendasi dan elemen riwayat memakai bentuk yang sama
+dengan hasil `POST /recommendations`, termasuk snapshot menu ketika rekomendasi
+dibuat. Menu tidak aktif tidak ditampilkan. Resource yang tidak ditemukan atau
+rekomendasi milik pengguna lain mengembalikan HTTP 404; cursor dan parameter
+tidak valid mengembalikan HTTP 422. Riwayat tanpa token valid mengembalikan HTTP 401.
 
-Schema GraphQL hanya menyediakan query; pembuatan rekomendasi dilakukan melalui REST.
+Seluruh pembacaan katalog dan riwayat berbagi batas `READ_LIMIT` per
+`READ_WINDOW_SECONDS`, dihitung menurut pengguna untuk token valid atau IP
+untuk anonim/token tidak valid. Header Authorization yang dikirim pada endpoint
+publik juga harus valid. HTTP 429 menyertakan header `Retry-After`.
 
 ## Katalog
 
@@ -154,11 +155,12 @@ app/
 ├── api/
 │   ├── auth.py
 │   ├── recommendations.py
-│   └── graphql.py
+│   └── menus.py
 ├── core/
 │   ├── config.py
 │   ├── security.py
 │   ├── errors.py
+│   ├── pagination.py
 │   └── rate_limit.py
 ├── services/
 │   ├── catalog.py
@@ -175,3 +177,14 @@ Katalog dan prompt tetap berada di `app/data/`.
 
 Jika memakai `.env` dari struktur sebelumnya, ubah `CATALOG_PATH` dari
 `app/db/data/data.json` menjadi `app/data/menus.json`.
+
+## Pengujian
+
+```bash
+python -m pip install -e '.[test]'
+python -m pytest -q
+```
+
+Tes endpoint menggunakan katalog uji, SQLite untuk pembacaan riwayat, dan
+pengganti layanan autentikasi serta rate limiter; PostgreSQL, Redis, dan LLM
+tidak diperlukan untuk menjalankannya.

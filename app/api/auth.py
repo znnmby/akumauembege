@@ -196,6 +196,48 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 
 
+async def get_read_identity(request: Request) -> AuthenticatedUser | None:
+    """Authenticate read requests and share their limit across both resources."""
+    settings = get_settings_from_request(request)
+    peer_ip = get_client_ip(request, settings.trusted_proxy_ips)
+    limiter = get_rate_limiter(request)
+    anonymous_rule = RateLimitRule(
+        key=f"read:ip:{peer_ip}",
+        limit=settings.read_limit,
+        window_seconds=settings.read_window_seconds,
+    )
+    try:
+        identity = await authenticate_authorization(
+            request.headers.get("authorization"),
+            get_session_factory(request),
+            settings,
+        )
+    except AppError:
+        await limiter.enforce([anonymous_rule])
+        raise
+    rule = anonymous_rule if identity is None else RateLimitRule(
+        key=f"read:user:{identity.user_id}",
+        limit=settings.read_limit,
+        window_seconds=settings.read_window_seconds,
+    )
+    await limiter.enforce([rule])
+    return identity
+
+
+ReadIdentity = Annotated[AuthenticatedUser | None, Depends(get_read_identity)]
+
+
+async def get_authenticated_read_user(identity: ReadIdentity) -> AuthenticatedUser:
+    if identity is None:
+        raise unauthorized()
+    return identity
+
+
+AuthenticatedReadUser = Annotated[
+    AuthenticatedUser, Depends(get_authenticated_read_user)
+]
+
+
 def _public_user(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,

@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing import Annotated, Literal
+from typing import Annotated, Generic, Literal, TypeVar
 from uuid import UUID
 from app.core.config import get_settings
 
@@ -273,6 +273,17 @@ class RecommendationResponse(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("created_at must be timezone-aware")
         return value.astimezone(timezone.utc)
+
+
+Item = TypeVar("Item")
+
+
+class PaginatedResponse(BaseModel, Generic[Item]):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[Item]
+    next_cursor: str | None
+    has_next_page: bool
 
 
 class LLMCandidate(BaseModel):
