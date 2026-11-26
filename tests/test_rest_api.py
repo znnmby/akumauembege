@@ -42,8 +42,8 @@ def test_catalog_detail_and_empty_search(api):
 
 @pytest.mark.parametrize("path", ["/menus", "/recommendations"])
 @pytest.mark.parametrize("params", [
-    {"limit": 0}, {"limit": 101}, {"limit": "abc"},
-    {"after": ""}, {"after": "!invalid"}, {"after": "a" * 2049},
+    {"limit": 0}, {"limit": 1001}, {"limit": "abc"},
+    {"after": ""}, {"after": "!invalid"}, {"after": "a" * 20481},
     {"after": "e30"},  # Valid base64 JSON, invalid cursor structure.
 ])
 def test_invalid_pagination(api, path, params):
@@ -56,7 +56,7 @@ def test_configured_page_size_and_search_limit(api):
     api.settings.read_max_page_size = 20
     for path in ("/menus", "/recommendations"):
         assert api.client.get(path, params={"limit": 21}, headers=api.headers).status_code == 422
-    assert api.client.get("/menus", params={"search": "x" * 151}).status_code == 422
+    assert api.client.get("/menus", params={"search": "x" * 1501}).status_code == 422
 
 
 def test_history_is_private_paginated_and_uses_snapshots(api):

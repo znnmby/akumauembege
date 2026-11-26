@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from types import MappingProxyType
 from typing import Any, Mapping
 from app.schemas import CatalogDocument, CatalogMenu, MenuSnapshot
+from app.core.limits import MAX_PAGE_SIZE, MAX_SEARCH_LENGTH
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -98,8 +99,8 @@ class CatalogService:
         if not isinstance(search, str):
             raise ValueError("search harus berupa string")
         normalized = search.strip()
-        if len(normalized) > 150:
-            raise ValueError("search maksimal 150 karakter")
+        if len(normalized) > MAX_SEARCH_LENGTH:
+            raise ValueError(f"search maksimal {MAX_SEARCH_LENGTH} karakter")
         return normalized or None
 
     def list_active_menus(
@@ -109,8 +110,8 @@ class CatalogService:
         first: int = 20,
         after_id: str | None = None,
     ) -> CatalogPage:
-        if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= 100:
-            raise ValueError("first harus berada di antara 1 dan 100")
+        if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= MAX_PAGE_SIZE:
+            raise ValueError(f"first harus berada di antara 1 dan {MAX_PAGE_SIZE}")
 
         normalized_search = self.normalize_search(search)
         needle = normalized_search.casefold() if normalized_search is not None else None

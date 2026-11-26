@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from typing import Any
 from uuid import UUID, uuid4
+from app.core.limits import MAX_REGION_NAME_LENGTH
 
 
 class Base(DeclarativeBase):
@@ -76,7 +77,7 @@ class Recommendation(Base):
         nullable=False,
     )
     menu_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    region_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    region_name: Mapped[str] = mapped_column(String(MAX_REGION_NAME_LENGTH), nullable=False)
     geographic_description: Mapped[str] = mapped_column(Text, nullable=False)
     selection_reason: Mapped[str] = mapped_column(Text, nullable=False)
     menu_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

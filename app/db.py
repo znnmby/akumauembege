@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import text
+from sqlalchemy import String, inspect, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from app.core.config import Settings
+from app.core.limits import MAX_REGION_NAME_LENGTH
 from app.models import Base
 
 
@@ -33,8 +35,23 @@ def create_database(
 _SCHEMA_ADVISORY_LOCK_ID = 7_619_883_523_247_101
 
 
+def _expand_region_name_column(connection: Connection) -> None:
+    """Widen an existing bounded column without shrinking it or changing data."""
+    columns = inspect(connection).get_columns("recommendations")
+    region_type = next(column["type"] for column in columns if column["name"] == "region_name")
+    if (
+        isinstance(region_type, String)
+        and region_type.length is not None
+        and region_type.length < MAX_REGION_NAME_LENGTH
+    ):
+        connection.execute(text(
+            "ALTER TABLE recommendations ALTER COLUMN region_name "
+            f"TYPE VARCHAR({MAX_REGION_NAME_LENGTH})"
+        ))
+
+
 async def initialize_database(engine: AsyncEngine) -> None:
-    """Create missing tables while serializing concurrent startup attempts."""
+    """Create tables and expand the region field under a shared startup lock."""
 
     # Importing the centralized model module registers every table on Base.metadata.
     from app import models as database_models  # noqa: F401
@@ -45,3 +62,4 @@ async def initialize_database(engine: AsyncEngine) -> None:
             {"lock_id": _SCHEMA_ADVISORY_LOCK_ID},
         )
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_expand_region_name_column)

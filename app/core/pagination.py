@@ -8,11 +8,11 @@ from typing import Any, NoReturn
 from uuid import UUID
 
 from app.core.errors import AppError
+from app.core.limits import MAX_CURSOR_LENGTH
 from app.services.catalog import CatalogService
 
 
 _CURSOR_VERSION = 1
-_MAX_CURSOR_LENGTH = 2048
 
 
 def bad_user_input(message: str) -> NoReturn:
@@ -127,7 +127,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def _decode(cursor: str) -> dict[str, Any]:
-    if not isinstance(cursor, str) or not cursor or len(cursor) > _MAX_CURSOR_LENGTH:
+    if not isinstance(cursor, str) or not cursor or len(cursor) > MAX_CURSOR_LENGTH:
         bad_user_input("Cursor tidak valid.")
     if not all(
         character.isascii()
@@ -138,7 +138,7 @@ def _decode(cursor: str) -> dict[str, Any]:
     try:
         padding = "=" * (-len(cursor) % 4)
         raw = base64.b64decode(cursor + padding, altchars=b"-_", validate=True)
-        if len(raw) > _MAX_CURSOR_LENGTH:
+        if len(raw) > MAX_CURSOR_LENGTH:
             raise ValueError("cursor payload too large")
         payload = json.loads(
             raw.decode("utf-8"),

@@ -7,6 +7,12 @@ from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 from typing import Literal
+from app.core.limits import (
+    MAX_GEOGRAPHIC_DESCRIPTION_LENGTH,
+    MAX_PAGE_SIZE,
+    MAX_REGION_NAME_LENGTH,
+    MAX_SELECTION_REASON_LENGTH,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,9 +51,9 @@ class Settings(BaseSettings):
     llm_max_response_bytes: int = Field(gt=0)
 
     catalog_path: Path
-    max_region_name_length: int = Field(ge=2, le=150)
-    max_geographic_description_length: int = Field(ge=10, le=2000)
-    max_selection_reason_length: int = Field(ge=1, le=1000)
+    max_region_name_length: int = Field(ge=2, le=MAX_REGION_NAME_LENGTH)
+    max_geographic_description_length: int = Field(ge=10, le=MAX_GEOGRAPHIC_DESCRIPTION_LENGTH)
+    max_selection_reason_length: int = Field(ge=1, le=MAX_SELECTION_REASON_LENGTH)
 
     recommendation_minute_limit: int = Field(gt=0)
     recommendation_long_window_limit: int = Field(gt=0)
@@ -64,7 +70,7 @@ class Settings(BaseSettings):
     me_window_seconds: int = Field(gt=0)
     read_limit: int = Field(gt=0)
     read_window_seconds: int = Field(gt=0)
-    read_max_page_size: int = Field(ge=20, le=100)
+    read_max_page_size: int = Field(ge=20, le=MAX_PAGE_SIZE)
 
     cors_allowed_origins: list[str]
     trusted_proxy_ips: list[str]

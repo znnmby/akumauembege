@@ -17,6 +17,7 @@ from app.api.auth import (
 )
 from app.services.catalog import CatalogService
 from app.core.errors import AppError
+from app.core.limits import MAX_CURSOR_LENGTH, MAX_PAGE_SIZE
 from app.core.pagination import decode_history_cursor, encode_history_cursor, validate_limit
 from app.services.llm import LLMClient, LLMInvalidResponseError, LLMTimeoutError, LLMUnavailableError
 from app.models import Recommendation
@@ -309,8 +310,8 @@ async def create_recommendation(
 async def list_recommendations(
     request: Request,
     current_user: AuthenticatedReadUser,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    after: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
+    after: Annotated[str | None, Query(min_length=1, max_length=MAX_CURSOR_LENGTH)] = None,
 ) -> PaginatedResponse[RecommendationResponse]:
     validate_limit(limit, maximum=get_settings_from_request(request).read_max_page_size)
     return await _service(request).list_for_user(

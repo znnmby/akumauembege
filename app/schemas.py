@@ -16,6 +16,15 @@ from pydantic import (
 from typing import Annotated, Generic, Literal, TypeVar
 from uuid import UUID
 from app.core.config import get_settings
+from app.core.limits import (
+    MAX_ASCII_ART_LINES,
+    MAX_ASCII_ART_WIDTH,
+    MAX_GEOGRAPHIC_DESCRIPTION_LENGTH,
+    MAX_MENU_DESCRIPTION_LENGTH,
+    MAX_MENU_NAME_LENGTH,
+    MAX_REGION_NAME_LENGTH,
+    MAX_SELECTION_REASON_LENGTH,
+)
 
 
 def _validate_ascii_art(lines: list[str]) -> list[str]:
@@ -23,16 +32,16 @@ def _validate_ascii_art(lines: list[str]) -> list[str]:
 
     if not isinstance(lines, list):
         raise ValueError("ascii_art harus berupa daftar baris")
-    if not 1 <= len(lines) <= 100:
-        raise ValueError("ascii_art harus memiliki 1 sampai 100 baris")
+    if not 1 <= len(lines) <= MAX_ASCII_ART_LINES:
+        raise ValueError(f"ascii_art harus memiliki 1 sampai {MAX_ASCII_ART_LINES} baris")
 
     width: int | None = None
     has_visible_character = False
     for line in lines:
         if not isinstance(line, str):
             raise ValueError("setiap baris ascii_art harus berupa string")
-        if not 1 <= len(line) <= 200:
-            raise ValueError("setiap baris ascii_art harus berisi 1 sampai 200 karakter")
+        if not 1 <= len(line) <= MAX_ASCII_ART_WIDTH:
+            raise ValueError(f"setiap baris ascii_art harus berisi 1 sampai {MAX_ASCII_ART_WIDTH} karakter")
         if any(ord(character) < 0x20 or ord(character) > 0x7E for character in line):
             raise ValueError("ascii_art hanya boleh berisi karakter ASCII printable")
         if width is None:
@@ -52,8 +61,8 @@ class CatalogMenu(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-    name: str = Field(min_length=1, max_length=150)
-    description: str = Field(min_length=1, max_length=2000)
+    name: str = Field(min_length=1, max_length=MAX_MENU_NAME_LENGTH)
+    description: str = Field(min_length=1, max_length=MAX_MENU_DESCRIPTION_LENGTH)
     is_active: bool
     ascii_art: list[str]
 
@@ -99,8 +108,8 @@ class MenuSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-    name: str = Field(min_length=1, max_length=150)
-    description: str = Field(min_length=1, max_length=2000)
+    name: str = Field(min_length=1, max_length=MAX_MENU_NAME_LENGTH)
+    description: str = Field(min_length=1, max_length=MAX_MENU_DESCRIPTION_LENGTH)
     ascii_art: list[str]
 
     @field_validator("ascii_art")
@@ -290,15 +299,15 @@ class LLMCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
-    name: str = Field(min_length=1, max_length=150)
-    description: str = Field(min_length=1, max_length=2000)
+    name: str = Field(min_length=1, max_length=MAX_MENU_NAME_LENGTH)
+    description: str = Field(min_length=1, max_length=MAX_MENU_DESCRIPTION_LENGTH)
 
 
 class LLMSelectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    region_name: str = Field(min_length=2, max_length=150)
-    geographic_description: str = Field(min_length=10, max_length=2000)
+    region_name: str = Field(min_length=2, max_length=MAX_REGION_NAME_LENGTH)
+    geographic_description: str = Field(min_length=10, max_length=MAX_GEOGRAPHIC_DESCRIPTION_LENGTH)
     candidates: list[LLMCandidate] = Field(min_length=1)
 
     @field_validator("region_name", "geographic_description", mode="before")
@@ -329,7 +338,7 @@ class LLMSelectionResponse(BaseModel):
         max_length=64,
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
-    selection_reason: str = Field(min_length=1, max_length=1000)
+    selection_reason: str = Field(min_length=1, max_length=MAX_SELECTION_REASON_LENGTH)
 
     @field_validator("menu_id")
     @classmethod

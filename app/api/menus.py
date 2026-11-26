@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Request
 
 from app.api.auth import ReadIdentity, get_settings_from_request
 from app.core.errors import AppError
+from app.core.limits import MAX_CURSOR_LENGTH, MAX_PAGE_SIZE, MAX_SEARCH_LENGTH
 from app.core.pagination import (
     decode_menu_cursor,
     encode_menu_cursor,
@@ -23,9 +24,9 @@ router = APIRouter(prefix="/menus", tags=["menus"])
 async def list_menus(
     request: Request,
     identity: ReadIdentity,
-    search: Annotated[str | None, Query(max_length=150)] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    after: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    search: Annotated[str | None, Query(max_length=MAX_SEARCH_LENGTH)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 20,
+    after: Annotated[str | None, Query(min_length=1, max_length=MAX_CURSOR_LENGTH)] = None,
 ) -> PaginatedResponse[MenuSnapshot]:
     settings = get_settings_from_request(request)
     validate_limit(limit, maximum=settings.read_max_page_size)
