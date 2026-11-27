@@ -17,7 +17,7 @@ from app.core.limits import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
-    """Runtime settings; every value must be supplied through the environment."""
+    """Runtime settings and backwards-compatible defaults."""
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     llm_output_mode: Literal["json_schema", "json_object", "text"]
     llm_max_output_tokens: int = Field(gt=0)
     llm_max_response_bytes: int = Field(gt=0)
+    llm_max_concurrent_requests: int = Field(default=5, gt=0)
 
     catalog_path: Path
     max_region_name_length: int = Field(ge=2, le=MAX_REGION_NAME_LENGTH)
@@ -62,6 +63,8 @@ class Settings(BaseSettings):
 
     register_limit: int = Field(gt=0)
     register_window_seconds: int = Field(gt=0)
+    invalid_auth_limit: int = Field(default=30, gt=0)
+    invalid_auth_window_seconds: int = Field(default=60, gt=0)
     login_limit: int = Field(gt=0)
     login_window_seconds: int = Field(gt=0)
     change_password_limit: int = Field(gt=0)

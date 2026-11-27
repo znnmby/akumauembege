@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from typing import Any
 from app.core.config import Settings
-from app.schemas import LLMSelectionRequest, LLMSelectionResponse
+from app.schemas.llm import LLMSelectionRequest, LLMSelectionResponse
 
 
 logger = logging.getLogger(__name__)

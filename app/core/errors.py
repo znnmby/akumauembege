@@ -31,6 +31,19 @@ class ErrorResponse(BaseModel):
     error: ErrorBody
 
 
+def error_responses(*statuses: int) -> dict[int, dict[str, Any]]:
+    responses: dict[int, dict[str, Any]] = {
+        status: {"model": ErrorResponse} for status in statuses
+    }
+    if 429 in responses:
+        responses[429]["headers"] = {
+            "Retry-After": {"schema": {"type": "integer", "minimum": 1}}
+        }
+    if 401 in responses:
+        responses[401]["headers"] = {"WWW-Authenticate": {"schema": {"type": "string"}}}
+    return responses
+
+
 class AppError(Exception):
     """An expected error whose public representation contains no internals."""
 
@@ -159,9 +172,10 @@ async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONRes
 
 async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error(
-        "Unhandled application error (%s)",
+        "Unhandled application error (%s) on %s %s",
         type(exc).__name__,
-        extra={"method": request.method, "path": request.url.path},
+        request.method,
+        getattr(request.scope.get("route"), "path", "<unmatched>"),
     )
     body = ErrorResponse(
         error=ErrorBody(code="INTERNAL_ERROR", message="Terjadi kesalahan internal.")

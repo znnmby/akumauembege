@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import String, Text
 
 from app import db
-from app.api.recommendations import RecommendationService
+from app.services.recommendations import RecommendationService
 from app.core.config import get_settings
 from app.core.pagination import decode_menu_cursor, encode_menu_cursor
 from app.core.rate_limit import RateLimiter
@@ -85,7 +85,7 @@ def test_large_llm_response_uses_new_token_and_size_limits(api):
 def test_catalog_expanded_content_reaches_provider_schema():
     menu = CatalogMenu(
         id="menu-001", name="M" * 1500, description="D" * 20000,
-        is_active=True, ascii_art=["x" * 2000] * 1000,
+        is_active=True, your_food=["x" * 2000] * 1000,
     )
     assert LLMCandidate(id=menu.id, name=menu.name, description=menu.description).name == menu.name
 
@@ -94,7 +94,7 @@ def test_recommendation_quota_is_tenfold_with_same_windows(api):
     redis = SimpleNamespace(eval=AsyncMock(return_value=[0, 0]))
     limiter = RateLimiter(redis, api.settings)
     asyncio.run(limiter.acquire_recommendation(api.owner))
-    assert redis.eval.call_args.args[7:] == (1200000, 100, 60000, 1000, 10800000)
+    assert redis.eval.call_args.args[8:] == (1200000, 100, 60000, 1000, 10800000, 5)
 
 
 def test_other_rate_limits_and_security_settings():

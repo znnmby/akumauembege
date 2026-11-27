@@ -34,7 +34,6 @@ def create_database(
 
 _SCHEMA_ADVISORY_LOCK_ID = 7_619_883_523_247_101
 
-
 def _expand_region_name_column(connection: Connection) -> None:
     """Widen an existing bounded column without shrinking it or changing data."""
     columns = inspect(connection).get_columns("recommendations")

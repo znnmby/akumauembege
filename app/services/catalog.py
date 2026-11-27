@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from bisect import bisect_left, bisect_right
+from operator import attrgetter
 from dataclasses import dataclass
 from pathlib import Path
 from pydantic import ValidationError
 from types import MappingProxyType
 from typing import Any, Mapping
-from app.schemas import CatalogDocument, CatalogMenu, MenuSnapshot
+from app.schemas.catalog import CatalogDocument, CatalogMenu, MenuSnapshot
 from app.core.limits import MAX_PAGE_SIZE, MAX_SEARCH_LENGTH
 
 
@@ -84,6 +86,7 @@ class CatalogLoader:
 class CatalogPage:
     items: list[CatalogMenu]
     has_next_page: bool
+    has_previous_page: bool
 
 
 class CatalogService:
@@ -109,6 +112,7 @@ class CatalogService:
         *,
         first: int = 20,
         after_id: str | None = None,
+        before_id: str | None = None,
     ) -> CatalogPage:
         if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= MAX_PAGE_SIZE:
             raise ValueError(f"first harus berada di antara 1 dan {MAX_PAGE_SIZE}")
@@ -123,16 +127,24 @@ class CatalogService:
             menus = [
                 menu
                 for menu in menus
-                if needle in menu.name.casefold() or needle in menu.description.casefold()
+                if (
+                    needle in menu.id.casefold()
+                    or needle in menu.name.casefold()
+                    or needle in menu.description.casefold()
+                )
             ]
-        if after_id is not None:
-            menus = [menu for menu in menus if menu.id > after_id]
+        by_id = attrgetter("id")
+        if before_id is not None:
+            end = bisect_left(menus, before_id, key=by_id)
+            start = max(0, end - first)
+        else:
+            start = bisect_right(menus, after_id, key=by_id) if after_id is not None else 0
+            end = min(len(menus), start + first)
 
-        selected = menus[: first + 1]
-        has_next_page = len(selected) > first
         return CatalogPage(
-            items=[menu.model_copy(deep=True) for menu in selected[:first]],
-            has_next_page=has_next_page,
+            items=menus[start:end],
+            has_next_page=start < end < len(menus),
+            has_previous_page=0 < start < end,
         )
 
     def get_active_menu(self, menu_id: str) -> CatalogMenu | None:
@@ -153,5 +165,5 @@ class CatalogService:
             id=menu.id,
             name=menu.name,
             description=menu.description,
-            ascii_art=list(menu.ascii_art),
+            your_food=list(menu.your_food),
         )

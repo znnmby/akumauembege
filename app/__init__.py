@@ -1,1 +1,1 @@
-"""Embege API package."""
+"""embege API package."""

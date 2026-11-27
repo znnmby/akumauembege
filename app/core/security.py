@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 from uuid import UUID
 from app.core.config import Settings
-from app.schemas import JWTClaims
+from app.schemas.auth import JWTClaims
 
 
 _password_hasher = PasswordHasher()

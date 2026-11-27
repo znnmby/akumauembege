@@ -1,12 +1,26 @@
+from unittest.mock import AsyncMock
 from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.recommendations import RecommendationRepository, RecommendationService
+from app.repositories.recommendations import RecommendationRepository
+from app.services.auth import AuthService
+from app.services.recommendations import RecommendationService
 from app.core.errors import AppError
 from app.schemas import RecommendationResponse
+
+
+def test_change_password_returns_confirmation(api, monkeypatch):
+    change_password = AsyncMock()
+    monkeypatch.setattr(AuthService, "change_password", change_password)
+    response = api.client.post("/auth/change-password", headers=api.headers, json={
+        "current_password": "current-password", "new_password": "updated-password",
+    })
+    change_password.assert_awaited_once()
+    assert response.status_code == 200
+    assert response.json() == {"message": "Password changed successfully."}
 
 
 def test_public_catalog_search_and_pagination(api):
@@ -29,14 +43,33 @@ def test_public_catalog_search_and_pagination(api):
     assert mismatch.status_code == 422
 
 
+@pytest.mark.parametrize(("limit", "search"), [(1, "IKAN"), (2, ""), (2, " MENU- ")])
+def test_menu_previous_page_round_trip(api, limit, search):
+    params = {"limit": limit, "search": search}
+    first = api.client.get("/menus", params=params).json()
+    assert first["previous_cursor"] is None
+    assert not first["has_previous_page"]
+    second = api.client.get("/menus", params={**params, "after": first["next_cursor"]}).json()
+    assert second["has_previous_page"]
+    assert second["next_cursor"] is None
+    previous = {**params, "before": second["previous_cursor"]}
+    assert api.client.get("/menus", params=previous).json() == first
+    assert api.client.get("/menus", params={**previous, "search": "lain"}).status_code == 422
+    assert api.client.get("/menus", params={**previous, "after": first["next_cursor"]}).status_code == 422
+
+
 def test_catalog_detail_and_empty_search(api):
+    matched_by_id = api.client.get("/menus", params={"search": "001"})
+    assert matched_by_id.status_code == 200
+    assert [menu["id"] for menu in matched_by_id.json()["items"]] == ["menu-001"]
     response = api.client.get("/menus/menu-001")
     assert response.status_code == 200
-    assert response.json()["ascii_art"] == ["+---+", "| o |", "+---+"]
+    assert response.json()["your_food"] == ["+---+", "| o |", "+---+"]
     for menu_id in ("menu-004", "missing"):
         assert api.client.get(f"/menus/{menu_id}").status_code == 404
     assert api.client.get("/menus", params={"search": "unknown"}).json() == {
         "items": [], "next_cursor": None, "has_next_page": False,
+        "previous_cursor": None, "has_previous_page": False,
     }
 
 

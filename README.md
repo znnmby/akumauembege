@@ -1,5 +1,7 @@
-# Embege
+# embege
 
+Backend REST API untuk katalog menu dan rekomendasi berdasarkan konteks daerah.
+Menggunakan FastAPI, PostgreSQL, Redis, dan provider LLM yang kompatibel dengan OpenAI.
 
 ## Minimum Environment Requirements
 
@@ -17,13 +19,32 @@ Pertahankan pengaturan lainnya dari `.env.example`. Jangan commit `.env`.
 
 ## Docker Compose
 
+Jalankan setelah `.env` terisi:
+
 ```bash
-docker compose up --build
+docker compose up -d --build --wait
 ```
+
+| Service | Fungsi | Akses |
+| --- | --- | --- |
+| `api` | REST API embege | `http://127.0.0.1:8000`, mengikuti `API_PORT` |
+| `db` | PostgreSQL 17 untuk pengguna, sesi, dan rekomendasi | Internal Compose |
+| `redis` | Rate limit dan lock rekomendasi | Internal Compose |
+
+Perintah pengelolaan service:
+
+```bash
+docker compose ps
+docker compose logs -f api
+docker compose stop
+```
+
+`docker compose stop` menghentikan seluruh service proyek embege dan mempertahankan
+container serta volume datanya. Untuk menjalankan kembali dengan kode atau
+konfigurasi terbaru, gunakan perintah `up` di atas.
 
 - OpenAPI: <http://127.0.0.1:8000/docs>
 - Liveness: <http://127.0.0.1:8000/health>
-
 
 ## Endpoint REST API
 
@@ -36,8 +57,8 @@ Dokumentasi interaktif tersedia di `/docs`, dan spesifikasi OpenAPI di `/openapi
 | `POST` | `/auth/register` | Publik | `201 Created` | Mendaftarkan pengguna |
 | `POST` | `/auth/login` | Publik | `200 OK` | Mendapatkan access token |
 | `GET` | `/auth/me` | Bearer token | `200 OK` | Melihat profil pengguna aktif |
-| `POST` | `/auth/change-password` | Bearer token | `204 No Content` | Mengubah password dan mencabut seluruh sesi |
-| `POST` | `/auth/logout` | Bearer token | `204 No Content` | Mencabut sesi token aktif |
+| `POST` | `/auth/change-password` | Bearer token | `200 OK` | Mengubah password dan mencabut seluruh sesi |
+| `POST` | `/auth/logout` | Bearer token | `200 OK` | Mencabut sesi token aktif |
 | `GET` | `/menus` | Publik | `200 OK` | Mencari dan menampilkan menu aktif |
 | `GET` | `/menus/{menu_id}` | Publik | `200 OK` | Melihat detail menu aktif |
 | `POST` | `/recommendations` | Bearer token | `201 Created` | Membuat rekomendasi |
@@ -60,8 +81,9 @@ ACCESS_TOKEN='TOKEN_DARI_RESPONS_LOGIN'
 ```
 
 Nilai UUID, waktu, token, dan alasan pemilihan di bawah adalah ilustrasi. Gunakan
-ID dari respons API Anda untuk request berikutnya. Contoh menu memakai katalog
-bawaan; hasil rekomendasi bergantung pada pilihan LLM dan katalog aktif.
+ID dari respons API Anda untuk request berikutnya. Isi menu pada contoh hanya
+ilustrasi struktur; gunakan ID dan isi dari katalog aktif. Hasil rekomendasi
+bergantung pada pilihan LLM dan katalog aktif.
 
 ### GET /health
 
@@ -163,10 +185,12 @@ curl -i -X POST "$BASE_URL/auth/change-password" \
   -d '{"current_password":"kata-sandi-rahasia","new_password":"kata-sandi-baru-rahasia"}'
 ```
 
-Response `204 No Content`, tanpa body:
+Response `200 OK`:
 
-```http
-HTTP/1.1 204 No Content
+```json
+{
+  "message": "Password changed successfully."
+}
 ```
 
 Seluruh sesi pengguna dicabut setelah password berubah. Login kembali dengan
@@ -182,10 +206,12 @@ curl -i -X POST "$BASE_URL/auth/logout" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
-Response `204 No Content`, tanpa body:
+Response `200 OK`:
 
-```http
-HTTP/1.1 204 No Content
+```json
+{
+  "message": "Logout successful."
+}
 ```
 
 Endpoint ini mencabut sesi token yang dikirim. Token tersebut tidak dapat dipakai
@@ -197,7 +223,7 @@ Hanya menu aktif yang ditampilkan. Endpoint ini dapat diakses tanpa token.
 
 | Query parameter | Wajib | Nilai bawaan | Keterangan |
 | --- | --- | --- | --- |
-| `search` | Tidak | Tanpa filter | Maksimal 1.500 karakter; mencari nama dan deskripsi tanpa membedakan huruf besar/kecil |
+| `search` | Tidak | Tanpa filter | Maksimal 1.500 karakter; mencari sebagian teks pada ID, nama, atau deskripsi tanpa membedakan huruf besar/kecil |
 | `limit` | Tidak | `20` | Jumlah item per halaman, dari `1` sampai `READ_MAX_PAGE_SIZE` (maksimal `1000`) |
 | `after` | Tidak | Halaman pertama | Cursor `next_cursor` dari respons sebelumnya, maksimal 20.480 karakter |
 
@@ -218,7 +244,7 @@ Response `200 OK`:
       "id": "menu-ikan",
       "name": "Paket Ikan dan Nasi",
       "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
-      "ascii_art": [
+      "your_food": [
         "+-------+",
         "| IKAN  |",
         "| NASI  |",
@@ -233,6 +259,12 @@ Response `200 OK`:
 
 Menu diurutkan menurut ID menaik. Jika pencarian tidak menemukan menu,
 `items` berupa array kosong.
+
+Pencarian tidak memerlukan ID lengkap. Contohnya, `GET /menus?search=001`
+mencocokkan bagian `001` dalam ID, sedangkan `GET /menus?search=ayam` menemukan
+menu yang ID, nama, atau deskripsinya mengandung `ayam`. Pencocokan berupa
+potongan teks berurutan, tanpa wildcard atau koreksi salah ketik. Spasi di awal
+dan akhir kata pencarian diabaikan. Request GET ini tidak membutuhkan body.
 
 ### GET /menus/{menu_id}
 
@@ -249,7 +281,7 @@ Response `200 OK`:
   "id": "menu-ikan",
   "name": "Paket Ikan dan Nasi",
   "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
-  "ascii_art": [
+  "your_food": [
     "+-------+",
     "| IKAN  |",
     "| NASI  |",
@@ -290,7 +322,7 @@ Response `201 Created`:
     "id": "menu-ikan",
     "name": "Paket Ikan dan Nasi",
     "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
-    "ascii_art": [
+    "your_food": [
       "+-------+",
       "| IKAN  |",
       "| NASI  |",
@@ -337,7 +369,7 @@ Response `200 OK`:
         "id": "menu-ikan",
         "name": "Paket Ikan dan Nasi",
         "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
-        "ascii_art": [
+        "your_food": [
           "+-------+",
           "| IKAN  |",
           "| NASI  |",
@@ -376,7 +408,7 @@ Response `200 OK`:
     "id": "menu-ikan",
     "name": "Paket Ikan dan Nasi",
     "description": "Paket katalog dengan nasi, hidangan ikan, sayur, dan buah sebagai contoh pilihan menu.",
-    "ascii_art": [
+    "your_food": [
       "+-------+",
       "| IKAN  |",
       "| NASI  |",
@@ -502,6 +534,15 @@ Jika batas terlampaui, contoh response `429 Too Many Requests` dengan header
 
 Tunggu sesuai `Retry-After` sebelum mencoba lagi. Permintaan rekomendasi yang
 masih diproses untuk pengguna yang sama memakai kode `RECOMMENDATION_IN_PROGRESS`.
+Jika kapasitas rekomendasi seluruh aplikasi penuh, API mengembalikan
+`429` dengan kode `LLM_CAPACITY_EXCEEDED` dan header `Retry-After: 1`.
+Permintaan ini tidak memanggil LLM dan tidak mengurangi kuota rekomendasi pengguna.
+
+Token yang ditolak memakai kuota kegagalan autentikasi bersama. Pada endpoint
+yang memakai autentikasi wajib sebelum menjalankan handler (profil, ganti
+password, logout, dan pembuatan rekomendasi), permintaan tanpa token juga
+memakai kuota ini. Pembacaan anonim tetap memakai kuota baca per IP.
+Logout dengan sesi valid tetap tersedia saat Redis bermasalah.
 
 ### Ringkasan status error
 
@@ -512,7 +553,7 @@ masih diproses untuk pengguna yang sama memakai kode `RECOMMENDATION_IN_PROGRESS
 | `404` | `NOT_FOUND` | Resource tidak ditemukan atau tidak dapat diakses pengguna |
 | `409` | `EMAIL_ALREADY_EXISTS` | Email sudah terdaftar |
 | `422` | `VALIDATION_ERROR`, `NO_SUITABLE_MENU` | Input tidak valid atau tidak ada menu yang sesuai |
-| `429` | `RATE_LIMIT_EXCEEDED`, `RECOMMENDATION_IN_PROGRESS` | Batas penggunaan atau proses aktif |
+| `429` | `RATE_LIMIT_EXCEEDED`, `RECOMMENDATION_IN_PROGRESS`, `LLM_CAPACITY_EXCEEDED` | Batas penggunaan, proses aktif, atau kapasitas LLM penuh |
 | `500` | `INTERNAL_ERROR` | Kesalahan internal |
 | `502` | `LLM_INVALID_RESPONSE` | Respons provider tidak valid |
 | `503` | `DATABASE_UNAVAILABLE`, `CATALOG_UNAVAILABLE`, `RATE_LIMIT_UNAVAILABLE`, `LLM_UNAVAILABLE` | Layanan pendukung tidak tersedia |
@@ -531,13 +572,25 @@ Katalog berada di `app/data/menus.json` dan berbentuk:
       "name": "Nama paket",
       "description": "Deskripsi katalog",
       "is_active": true,
-      "ascii_art": ["+-------+", "| paket |", "+-------+"]
+      "your_food": ["+-------+", "| paket |", "+-------+"]
     }
   ]
 }
 ```
 
-ID harus unik. ASCII art wajib memakai karakter ASCII printable, tanpa tab/newline dalam satu baris, dan semua baris harus sama lebar. Restart aplikasi setelah mengubah katalog karena file hanya dibaca sekali saat startup. Untuk menampilkan gambar, gunakan font monospace dan gabungkan `ascii_art` dengan newline.
+ID harus unik. `your_food` berupa array string yang disalin apa adanya ke respons
+API dan snapshot rekomendasi. Tidak ada batas panjang string atau jumlah elemen
+khusus untuk field ini. Unicode, baris dengan lebar berbeda, string kosong, tab,
+dan newline diperbolehkan; array kosong juga diperbolehkan. String tidak dipangkas
+atau diubah. Jika isinya gambar teks, tampilkan dengan font monospace dan
+gabungkan elemen `your_food` dengan newline.
+
+Snapshot rekomendasi lama dengan field `ascii_art` tetap dapat dibaca. API selalu
+mengembalikan `your_food`, dan rekomendasi baru menyimpan nama field tersebut.
+Katalog baru memakai `your_food`.
+
+Katalog hanya dibaca sekali saat startup. Setelah mengedit file katalog pada
+deployment Docker, jalankan `docker compose up -d --build api`.
 
 ## LLM dan batas penggunaan
 
@@ -549,35 +602,48 @@ ID harus unik. ASCII art wajib memakai karakter ASCII printable, tanpa tab/newli
 
 Satu pengguna dapat memiliki satu proses rekomendasi aktif. Pada konfigurasi contoh, rekomendasi dibatasi 100 permintaan per rolling 60 detik dan 1.000 permintaan per rolling 10.800 detik. Batas endpoint lain dapat diubah melalui variabel pada `.env.example`.
 
-Batas penggunaan pada `.env.example` sudah dilonggarkan 10 kali lipat:
+`LLM_MAX_CONCURRENT_REQUESTS=5` membatasi seluruh aplikasi menjadi maksimal lima
+proses rekomendasi bersamaan, termasuk saat API memakai beberapa worker atau
+instance yang terhubung ke Redis yang sama. Slot ditahan sampai proses selesai
+atau gagal, termasuk penyimpanan hasil, sehingga jumlah panggilan LLM bersamaan
+juga dibatasi. Permintaan saat penuh langsung menerima `429`; tidak ada antrean.
+Slot dilepas setelah proses berakhir dan memiliki masa berlaku sesuai
+`RECOMMENDATION_LOCK_TTL_SECONDS` untuk pemulihan jika worker berhenti mendadak.
+Nilai maksimum harus berupa bilangan bulat lebih besar dari nol.
 
-| Pengaturan | Sebelumnya | Sekarang | Jendela / satuan |
-| --- | --- | --- | --- |
-| `RECOMMENDATION_MINUTE_LIMIT` | 10 | 100 | Per 60 detik, per pengguna |
-| `RECOMMENDATION_LONG_WINDOW_LIMIT` | 100 | 1.000 | Per 10.800 detik, per pengguna |
-| `REGISTER_LIMIT` | 5 | 50 | Per 3.600 detik, per IP |
-| `LOGIN_LIMIT` | 10 | 100 | Per 900 detik, per IP dan email |
-| `CHANGE_PASSWORD_LIMIT` | 5 | 50 | Per 900 detik, per pengguna |
-| `ME_LIMIT` | 60 | 600 | Per 60 detik, per pengguna |
-| `READ_LIMIT` | 60 | 600 | Per 60 detik, per pengguna atau IP |
-| `READ_MAX_PAGE_SIZE` | 100 | 1.000 | Item per halaman; default request tetap 20 |
-| `MAX_REGION_NAME_LENGTH` | 150 | 1.500 | Karakter nama daerah |
-| `MAX_GEOGRAPHIC_DESCRIPTION_LENGTH` | 2.000 | 20.000 | Karakter deskripsi geografis |
-| `MAX_SELECTION_REASON_LENGTH` | 1.000 | 10.000 | Karakter alasan pemilihan |
-| `LLM_MAX_OUTPUT_TOKENS` | 512 | 5.120 | Token keluaran provider |
-| `LLM_MAX_RESPONSE_BYTES` | 16.384 | 163.840 | Byte respons provider |
-| `LLM_TIMEOUT_SECONDS` | 60 | 600 | Detik timeout pemilihan menu |
-| `RECOMMENDATION_LOCK_TTL_SECONDS` | 120 | 1.200 | Detik masa berlaku lock rekomendasi |
+Nilai batas penggunaan pada `.env.example`:
 
-Batas pencarian menjadi 1.500 karakter dan cursor 20.480 karakter. Konten katalog
-mendukung nama menu hingga 1.500 karakter, deskripsi hingga 20.000 karakter, serta
-ASCII art hingga 1.000 baris dengan lebar maksimal 2.000 karakter per baris.
-Batas ini dipakai bersama oleh schema API, katalog, dan input/output LLM.
+| Pengaturan | Nilai | Jendela / satuan |
+| --- | --- | --- |
+| `RECOMMENDATION_MINUTE_LIMIT` | 100 | Per 60 detik, per pengguna |
+| `RECOMMENDATION_LONG_WINDOW_LIMIT` | 1.000 | Per 10.800 detik, per pengguna |
+| `REGISTER_LIMIT` | 50 | Per 3.600 detik, per IP |
+| `LOGIN_LIMIT` | 100 | Per 900 detik, per IP dan email |
+| `CHANGE_PASSWORD_LIMIT` | 50 | Per 900 detik, per pengguna |
+| `INVALID_AUTH_LIMIT` | 30 | Batas kegagalan autentikasi Bearer per IP, lintas endpoint |
+| `INVALID_AUTH_WINDOW_SECONDS` | 60 | Durasi jendela kegagalan autentikasi, dalam detik |
+| `ME_LIMIT` | 600 | Per 60 detik, per pengguna |
+| `READ_LIMIT` | 600 | Per 60 detik, per pengguna atau IP |
+| `READ_MAX_PAGE_SIZE` | 1.000 | Item per halaman; default request tetap 20 |
+| `MAX_REGION_NAME_LENGTH` | 1.500 | Karakter nama daerah |
+| `MAX_GEOGRAPHIC_DESCRIPTION_LENGTH` | 20.000 | Karakter deskripsi geografis |
+| `MAX_SELECTION_REASON_LENGTH` | 10.000 | Karakter alasan pemilihan |
+| `LLM_MAX_OUTPUT_TOKENS` | 5.120 | Token keluaran provider |
+| `LLM_MAX_RESPONSE_BYTES` | 163.840 | Byte respons provider |
+| `LLM_MAX_CONCURRENT_REQUESTS` | 5 | Maksimum proses rekomendasi bersamaan untuk seluruh aplikasi |
+| `LLM_TIMEOUT_SECONDS` | 600 | Detik timeout pemilihan menu |
+| `RECOMMENDATION_LOCK_TTL_SECONDS` | 1.200 | Detik masa berlaku lock rekomendasi |
 
-Jumlah request dinaikkan dengan jendela rate limit yang sama. Syarat format ID,
-email, password, token, dan autentikasi tetap berlaku. Lock tetap membatasi satu
-proses rekomendasi aktif per pengguna; TTL diperpanjang agar selalu melebihi
-timeout LLM. Batas provider LLM sendiri tetap mengikuti layanan yang digunakan.
+Pencarian dibatasi 1.500 karakter dan cursor 20.480 karakter. Konten katalog
+mendukung nama menu hingga 1.500 karakter dan deskripsi hingga 20.000 karakter.
+`your_food` tidak memiliki batas panjang atau jumlah elemen khusus di schema
+dan tidak dibatasi pada karakter ASCII. Field ini diambil dari katalog, tanpa
+dikirim ke LLM. Batas lainnya tetap dipakai bersama oleh schema API, katalog,
+dan input/output LLM.
+
+Lock membatasi satu proses rekomendasi aktif per pengguna.
+`RECOMMENDATION_LOCK_TTL_SECONDS` harus lebih besar dari `LLM_TIMEOUT_SECONDS`.
+Batas provider LLM mengikuti layanan yang digunakan.
 
 Untuk deployment lain, sesuaikan nilai pada `.env` dengan tabel di atas dan
 buat ulang container API agar environment baru terbaca, misalnya
@@ -585,48 +651,103 @@ buat ulang container API agar environment baru terbaca, misalnya
 
 Hasil pilihan menu dan teks katalog tidak menjamin kecukupan gizi, verifikasi ketersediaan bahan, atau pemenuhan standar gizi resmi.
 
-## Struktur ringkas
+## Struktur modul
 
 ```text
 app/
-├── main.py             # lifecycle, health, pemasangan router
-├── db.py               # koneksi dan inisialisasi tabel
-├── models.py           # model SQLAlchemy terpusat
-├── schemas.py          # schema input/output
-├── api/
+├── main.py                  # lifecycle, health, pemasangan router
+├── db.py                    # koneksi dan inisialisasi tabel
+├── models.py                # model SQLAlchemy terpusat
+├── api/                     # endpoint HTTP dan dependency request
 │   ├── auth.py
+│   ├── menus.py
 │   ├── recommendations.py
-│   └── menus.py
-├── core/
+│   └── dependencies.py
+├── services/                # logika bisnis dan integrasi provider
+│   ├── auth.py
+│   ├── authentication.py    # validasi bearer token dan sesi
+│   ├── recommendations.py
+│   ├── catalog.py
+│   └── llm.py
+├── repositories/            # query dan penyimpanan database
+│   ├── auth.py
+│   └── recommendations.py
+├── schemas/                 # validasi input/output per fitur
+│   ├── __init__.py          # ekspor schema publik
+│   ├── auth.py
+│   ├── catalog.py
+│   ├── recommendations.py
+│   ├── llm.py
+│   └── pagination.py
+├── core/                    # kebutuhan bersama
 │   ├── config.py
 │   ├── security.py
 │   ├── errors.py
 │   ├── pagination.py
 │   ├── limits.py
-│   └── rate_limit.py
-├── services/
-│   ├── catalog.py
-│   └── llm.py
+│   ├── rate_limit.py
+│   └── rate_limit_scripts.py
 └── data/
     ├── menus.json
     └── select_menu.txt
 ```
 
-Setiap fitur API menyatukan endpoint, logika bisnis, dan akses datanya dalam
-satu file. `core/` berisi kebutuhan bersama, sedangkan `services/` menangani
-katalog dan provider LLM. Tidak ada pemecahan router/service/repository per fitur.
-Katalog dan prompt tetap berada di `app/data/`.
+### Pembagian tanggung jawab
 
-Jika memakai `.env` dari struktur sebelumnya, ubah `CATALOG_PATH` dari
-`app/db/data/data.json` menjadi `app/data/menus.json`.
+| Modul | Tanggung jawab |
+| --- | --- |
+| `api/` | Endpoint HTTP, parameter, status response, dan dependency FastAPI |
+| `services/` | Proses bisnis, validasi sesi, pemilihan menu, dan integrasi LLM |
+| `repositories/` | Query SQLAlchemy serta penyimpanan data |
+| `schemas/` | Validasi request, response, katalog, dan payload LLM |
+| `models.py` | Definisi tabel SQLAlchemy |
+| `db.py` | Koneksi, inisialisasi tabel, dan penyesuaian kolom nama daerah lama |
+| `core/` | Konfigurasi, keamanan, error, pagination, dan rate limit |
+| `data/` | Katalog menu dan prompt pemilihan menu |
+
+### Lokasi kode per fitur
+
+| Fitur | Endpoint | Service | Repository | Schema |
+| --- | --- | --- | --- | --- |
+| Autentikasi | [api/auth.py](app/api/auth.py) | [services/auth.py](app/services/auth.py), [services/authentication.py](app/services/authentication.py) | [repositories/auth.py](app/repositories/auth.py) | [schemas/auth.py](app/schemas/auth.py) |
+| Rekomendasi | [api/recommendations.py](app/api/recommendations.py) | [services/recommendations.py](app/services/recommendations.py) | [repositories/recommendations.py](app/repositories/recommendations.py) | [schemas/recommendations.py](app/schemas/recommendations.py) |
+| Katalog | [api/menus.py](app/api/menus.py) | [services/catalog.py](app/services/catalog.py) | — | [schemas/catalog.py](app/schemas/catalog.py) |
+| Provider LLM | — | [services/llm.py](app/services/llm.py) | — | [schemas/llm.py](app/schemas/llm.py) |
+
+Dependency request bersama berada di [api/dependencies.py](app/api/dependencies.py).
+Implementasi rate limiter berada di [core/rate_limit.py](app/core/rate_limit.py),
+sedangkan operasi Redis atomik disimpan di
+[core/rate_limit_scripts.py](app/core/rate_limit_scripts.py).
+
+Saat menambahkan fitur, tempatkan endpoint di `api/`, proses bisnis di
+`services/`, query di `repositories/`, dan validasi di `schemas/`.
+Import schema per fitur tersedia melalui `app.schemas.auth`,
+`app.schemas.recommendations`, dan modul sejenis; ekspor publik melalui
+`app.schemas` juga tersedia.
 
 ## Pengujian
 
+Gunakan Python 3.12 atau lebih baru:
+
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e '.[test]'
 python -m pytest -q
 ```
 
-Tes endpoint menggunakan katalog uji, SQLite untuk pembacaan riwayat, dan
-pengganti layanan autentikasi serta rate limiter; PostgreSQL, Redis, dan LLM
-tidak diperlukan untuk menjalankannya.
+| File | Cakupan |
+| --- | --- |
+| [tests/test_rest_api.py](tests/test_rest_api.py) | Endpoint, autentikasi, privasi riwayat, pagination, dan penanganan error |
+| [tests/test_limits.py](tests/test_limits.py) | Batas input/output, kapasitas halaman, kuota rekomendasi, dan pelebaran kolom nama daerah |
+| [tests/test_your_food.py](tests/test_your_food.py) | Konten Unicode tanpa batas format khusus, respons katalog/rekomendasi, snapshot lama, dan schema OpenAPI |
+| [tests/conftest.py](tests/conftest.py) | Katalog uji, database SQLite, identitas pengguna, dan pengganti rate limiter |
+
+Tes tidak membutuhkan PostgreSQL, Redis, atau LLM yang berjalan. Konfigurasi
+uji diambil dari `.env.example` dengan kredensial khusus pengujian.
+
+Pengujian kapasitas LLM berada di `tests/test_llm_capacity.py`. Untuk menjalankan
+uji integrasi konkurensi, pelepasan slot, dan pemulihan slot kedaluwarsa dengan
+Redis nyata, set `TEST_REDIS_URL`, lalu jalankan `python -m pytest -q`.
+Tanpa variabel tersebut, dua uji integrasi Redis dilewati. Kunci pengujian memakai
+namespace acak dan dibersihkan setelah pengujian.

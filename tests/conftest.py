@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,11 +29,11 @@ os.environ.update(
     LLM_API_KEY="test-key",
 )
 
-from app.api.auth import AuthRepository  # noqa: E402
+from app.repositories.auth import AuthRepository  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 from app.main import create_app  # noqa: E402
-from app.models import Recommendation  # noqa: E402
+from app.models import Recommendation, User  # noqa: E402
 from app.schemas import AuthenticatedUser  # noqa: E402
 from app.services.catalog import CatalogLoader, CatalogService  # noqa: E402
 
@@ -46,7 +47,7 @@ def api(tmp_path, monkeypatch):
         "menus": [
             {
                 "id": menu_id, "name": name, "description": description,
-                "is_active": active, "ascii_art": ["+---+", "| o |", "+---+"],
+                "is_active": active, "your_food": ["+---+", "| o |", "+---+"],
             }
             for menu_id, name, description, active in [
                 ("menu-003", "Ikan laut", "Paket pesisir", True),
@@ -88,6 +89,7 @@ def api(tmp_path, monkeypatch):
     # SQLite runs the real repository's WHERE/ORDER BY queries. Production DDL
     # remains PostgreSQL-specific, so only this test table is created manually.
     with engine.begin() as connection:
+        User.__table__.create(connection)
         connection.execute(text("""
             CREATE TABLE recommendations (
                 id VARCHAR(32) PRIMARY KEY, user_id VARCHAR(32) NOT NULL,
@@ -99,7 +101,7 @@ def api(tmp_path, monkeypatch):
         """))
     snapshot = {
         "id": "removed-menu", "name": "Menu saat dibuat",
-        "description": "Snapshot tersimpan", "ascii_art": ["[o]"],
+        "description": "Snapshot tersimpan", "your_food": ["[o]"],
     }
     with Session(engine) as session:
         for number, user_id, created_at in [
@@ -114,19 +116,32 @@ def api(tmp_path, monkeypatch):
             ))
         session.commit()
 
-    class ReadSession:
+    class TestSession:
         async def __aenter__(self):
-            self.session = Session(engine)
+            self.session = Session(engine, expire_on_commit=False)
             return self
 
         async def __aexit__(self, *args):
             self.session.close()
+
+        @asynccontextmanager
+        async def begin(self):
+            with self.session.begin():
+                yield
+
+        def add(self, record):
+            self.session.add(record)
+
+        async def flush(self):
+            self.session.flush()
 
         @staticmethod
         def restore_timezone(record):
             # SQLite drops DateTime timezone info; PostgreSQL preserves it.
             if record is not None:
                 record.created_at = record.created_at.replace(tzinfo=timezone.utc)
+                if isinstance(record, User):
+                    record.updated_at = record.updated_at.replace(tzinfo=timezone.utc)
             return record
 
         async def scalar(self, statement):
@@ -141,7 +156,7 @@ def api(tmp_path, monkeypatch):
     app = create_app()
     limiter = SimpleNamespace(enforce=AsyncMock())
     app.state.settings = settings
-    app.state.session_factory = ReadSession
+    app.state.session_factory = TestSession
     app.state.catalog_service = catalog_service
     app.state.rate_limiter = limiter
     app.state.llm_client = SimpleNamespace()

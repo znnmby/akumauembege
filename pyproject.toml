@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "embege"
 version = "0.1.0"
-description = "API backend untuk rekomendasi paket menu MBG dari katalog tervalidasi"
+description = "API backend embege untuk rekomendasi paket menu dari katalog tervalidasi"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
