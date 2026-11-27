@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import String, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import (
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 from app.core.config import Settings
 from app.core.limits import MAX_REGION_NAME_LENGTH
 from app.models import Base
@@ -19,9 +22,27 @@ AsyncSessionFactory = async_sessionmaker[AsyncSession]
 def create_database(
     settings: Settings,
 ) -> tuple[AsyncEngine, AsyncSessionFactory]:
+    host = settings.db_host.lower().rstrip(".")
+    shared_pooler = host.endswith(".pooler.supabase.com")
+    supabase = shared_pooler or host.endswith(".supabase.co")
+    engine_options: dict[str, Any] = {"pool_pre_ping": True}
+    if supabase:
+        # Supabase manages connections externally; do not retain a second pool
+        # in each serverless instance. Local PostgreSQL keeps its normal pool.
+        connect_args: dict[str, Any] = {"ssl": "require"}
+        engine_options.update(poolclass=NullPool, connect_args=connect_args)
+        if shared_pooler and settings.db_port == 6543:
+            connect_args.update(
+                statement_cache_size=0,
+                prepared_statement_cache_size=0,
+                # SQLAlchemy explicitly calls asyncpg.prepare(), even with its
+                # cache disabled. Use unnamed statements within each transaction
+                # to avoid collisions with other clients on the pooled backend.
+                prepared_statement_name_func=lambda: "",
+            )
     engine = create_async_engine(
         settings.database_url,
-        pool_pre_ping=True,
+        **engine_options,
     )
     session_factory = async_sessionmaker(
         bind=engine,

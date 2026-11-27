@@ -17,6 +17,32 @@ Salin `.env.example` menjadi `.env`, lalu isi:
 
 Pertahankan pengaturan lainnya dari `.env.example`. Jangan commit `.env`.
 
+## Supabase PostgreSQL
+
+Untuk Supabase, salin parameter database dari dashboard **Connect** ke variabel
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, dan `DB_PASSWORD`. Gunakan password
+asli pada `DB_PASSWORD`; SQLAlchemy merakit dan mengodekan URL koneksi.
+
+Backend otomatis mengenali endpoint `*.pooler.supabase.com` dan
+`*.supabase.co`, mewajibkan TLS, serta memakai `NullPool` agar koneksi tidak
+tertahan di setiap instance serverless. Untuk **shared transaction pooler**
+(`*.pooler.supabase.com` port `6543`), cache statement pada asyncpg dan
+SQLAlchemy dinonaktifkan dan query menggunakan prepared statement tanpa nama.
+Ini mencegah konflik `DuplicatePreparedStatementError` pada backend pooler.
+Shared session pooler pada port `5432` tetap memakai perilaku statement biasa.
+PostgreSQL lokal tetap memakai konfigurasi pool sebelumnya.
+
+Tidak perlu menambahkan variabel environment baru untuk penyesuaian ini.
+Setelah push, redeploy backend di Vercel agar kode koneksi terbaru dipakai.
+`REDIS_URL` tetap harus diisi dengan URL Redis yang valid (`redis://` atau
+`rediss://`), bukan URL REST `https://`.
+
+Uji regresi koneksi berada di `tests/test_database_pooler.py`. Untuk menjalankan
+uji PostgreSQL nyata, set `TEST_POSTGRES_URL` ke database pengujian lalu jalankan
+`python -m pytest -q tests/test_database_pooler.py`. Uji ini mensimulasikan backend
+pooler yang sudah memuat statement dari klien sebelumnya tanpa mengubah tabel
+aplikasi. Tanpa variabel tersebut, uji PostgreSQL nyata dilewati.
+
 ## Docker Compose
 
 Jalankan setelah `.env` terisi:
