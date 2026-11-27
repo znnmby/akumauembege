@@ -3,6 +3,21 @@
 Backend REST API untuk katalog menu dan rekomendasi berdasarkan konteks daerah.
 Menggunakan FastAPI, PostgreSQL, Redis, dan provider LLM yang kompatibel dengan OpenAI.
 
+## Akses API produksi
+
+Base URL: [https://akumauembege.vercel.app](https://akumauembege.vercel.app/).
+
+- Swagger UI: [https://akumauembege.vercel.app/docs](https://akumauembege.vercel.app/docs)
+- OpenAPI JSON: [https://akumauembege.vercel.app/openapi.json](https://akumauembege.vercel.app/openapi.json)
+- Liveness: [https://akumauembege.vercel.app/health](https://akumauembege.vercel.app/health)
+
+Path `/` tidak memiliki endpoint dan mengembalikan `404 NOT_FOUND`. Gunakan
+`/health` untuk memeriksa apakah API merespons. Endpoint ini merupakan liveness,
+bukan pemeriksaan kesehatan PostgreSQL, Redis, atau provider LLM secara menyeluruh.
+
+Backend menggunakan autentikasi JWT milik aplikasi. PostgreSQL menyimpan pengguna,
+sesi, dan riwayat rekomendasi; katalog menu dibaca dari `app/data/menus.json`.
+
 ## Minimum Environment Requirements
 
 Salin `.env.example` menjadi `.env`, lalu isi:
@@ -16,6 +31,11 @@ Salin `.env.example` menjadi `.env`, lalu isi:
 | `LLM_BASE_URL` | URL API provider yang kompatibel dengan OpenAI |
 
 Pertahankan pengaturan lainnya dari `.env.example`. Jangan commit `.env`.
+
+Untuk Vercel, masukkan konfigurasi tersebut ke **Project Settings → Environment
+Variables**, termasuk parameter PostgreSQL dan `REDIS_URL` layanan online.
+Nama host Docker seperti `db` dan `redis` hanya berlaku di jaringan Compose lokal.
+Nilai pada `.env.example` adalah contoh lokal, bukan salinan konfigurasi produksi.
 
 ## Supabase PostgreSQL
 
@@ -43,7 +63,7 @@ uji PostgreSQL nyata, set `TEST_POSTGRES_URL` ke database pengujian lalu jalanka
 pooler yang sudah memuat statement dari klien sebelumnya tanpa mengubah tabel
 aplikasi. Tanpa variabel tersebut, uji PostgreSQL nyata dilewati.
 
-## Docker Compose
+## Docker Compose lokal
 
 Jalankan setelah `.env` terisi:
 
@@ -74,7 +94,9 @@ konfigurasi terbaru, gunakan perintah `up` di atas.
 
 ## Endpoint REST API
 
-Base URL lokal adalah `http://127.0.0.1:8000` sesuai `API_PORT` pada `.env`.
+Base URL produksi adalah `https://akumauembege.vercel.app`, dan dipakai oleh
+contoh request di bawah. Untuk pengujian Docker lokal, ganti nilai `BASE_URL`
+menjadi `http://127.0.0.1:8000` sesuai `API_PORT` pada `.env`.
 Dokumentasi interaktif tersedia di `/docs`, dan spesifikasi OpenAPI di `/openapi.json`.
 
 | Method | Endpoint | Akses | Status sukses | Kegunaan |
@@ -96,7 +118,7 @@ Dokumentasi interaktif tersedia di `/docs`, dan spesifikasi OpenAPI di `/openapi
 Siapkan base URL untuk contoh `curl` berikut:
 
 ```bash
-BASE_URL='http://127.0.0.1:8000'
+BASE_URL='https://akumauembege.vercel.app'
 ```
 
 Kirim body JSON dengan header `Content-Type: application/json`. Setelah login,
@@ -252,6 +274,7 @@ Hanya menu aktif yang ditampilkan. Endpoint ini dapat diakses tanpa token.
 | `search` | Tidak | Tanpa filter | Maksimal 1.500 karakter; mencari sebagian teks pada ID, nama, atau deskripsi tanpa membedakan huruf besar/kecil |
 | `limit` | Tidak | `20` | Jumlah item per halaman, dari `1` sampai `READ_MAX_PAGE_SIZE` (maksimal `1000`) |
 | `after` | Tidak | Halaman pertama | Cursor `next_cursor` dari respons sebelumnya, maksimal 20.480 karakter |
+| `before` | Tidak | Tanpa cursor mundur | Cursor `previous_cursor` untuk kembali ke halaman sebelumnya, maksimal 20.480 karakter; tidak boleh dipakai bersamaan dengan `after` |
 
 Request:
 
@@ -279,7 +302,9 @@ Response `200 OK`:
     }
   ],
   "next_cursor": null,
-  "has_next_page": false
+  "has_next_page": false,
+  "previous_cursor": null,
+  "has_previous_page": false
 }
 ```
 
@@ -297,7 +322,8 @@ dan akhir kata pencarian diabaikan. Request GET ini tidak membutuhkan body.
 Request:
 
 ```bash
-curl -sS "$BASE_URL/menus/menu-ikan"
+MENU_ID='ID_MENU_DARI_RESPONS_GET_MENUS'
+curl -sS "$BASE_URL/menus/$MENU_ID"
 ```
 
 Response `200 OK`:
@@ -361,8 +387,10 @@ Response `201 Created`:
 
 Rekomendasi disimpan sebagai riwayat pengguna. `menu` merupakan snapshot katalog
 pada saat rekomendasi dibuat, sehingga tetap tersedia walaupun katalog berubah.
-Jika tidak ada menu yang sesuai, API mengembalikan `422 Unprocessable Entity`
-dengan kode `NO_SUITABLE_MENU`.
+Prompt LLM mewajibkan pemilihan tepat satu kandidat aktif. Jika kecocokannya tidak
+sempurna, provider diminta memilih yang paling mendekati dan menjelaskan
+keterbatasannya. Backend tetap menangani `menu_id: null` dari provider sebagai
+`422 NO_SUITABLE_MENU`; ID di luar kandidat ditolak dengan `502 LLM_INVALID_RESPONSE`.
 
 ### GET /recommendations
 
@@ -449,7 +477,7 @@ ID yang tidak berbentuk UUID mengembalikan `422 Unprocessable Entity`.
 Rekomendasi yang tidak ditemukan atau milik pengguna lain mengembalikan
 `404 Not Found`.
 
-### Mengambil halaman berikutnya
+### Mengambil halaman berikutnya dan sebelumnya
 
 Ketika `has_next_page` bernilai `true`, salin nilai `next_cursor` dari respons
 ke parameter `after`. Contoh untuk daftar menu:
@@ -467,6 +495,36 @@ gunakan `GET /recommendations` dengan header Bearer token pengguna yang sama.
 Pada halaman terakhir, `next_cursor` bernilai `null` dan `has_next_page` bernilai
 `false`. Cursor yang rusak, berbeda jenis resource, berbeda konteks pencarian,
 atau berbeda pengguna mengembalikan HTTP 422.
+
+Daftar menu juga mendukung navigasi mundur. Saat `has_previous_page` bernilai
+`true`, kirim `previous_cursor` sebagai parameter `before`, dengan `search` dan
+`limit` yang sama. Jangan mengirim `after` dan `before` sekaligus. Riwayat
+rekomendasi menggunakan `after` untuk halaman berikutnya dan tidak menyediakan
+`before`, `previous_cursor`, atau `has_previous_page`.
+
+## Koleksi Postman
+
+Tutorial langkah demi langkah tersedia di [panduan API testing](docs/README.md).
+
+Impor [embege.postman_collection.json](docs/embege.postman_collection.json). Koleksi
+berisi 20 request dan memakai `baseUrl=https://akumauembege.vercel.app`.
+Untuk menjalankan terhadap Docker lokal, ganti `baseUrl` pada variabel koleksi
+menjadi `http://127.0.0.1:8000`.
+
+Isi `emailA` dengan email uji yang belum terdaftar, serta `passA` dan `newPassA`
+dengan dua password berbeda sepanjang 12–128 karakter. Jalankan koleksi sesuai
+urutan melalui Collection Runner agar variabel lokal seperti `userIdA` dan
+`freshA` yang dibuat script tersedia untuk request berikutnya. Token awal
+`tokenA` disimpan oleh script login. Saat menguji request satu per satu secara
+manual, isi variabel yang dibutuhkan request tersebut melalui variabel koleksi.
+
+Koleksi mencakup pendaftaran, login, katalog, pencarian, riwayat, pembuatan
+rekomendasi, ganti password, pencabutan token, dan logout. Request pembuatan
+rekomendasi memanggil LLM dan dapat menggunakan kuota/biaya provider.
+Gunakan akun uji khusus. Ketiadaan token pada endpoint terlindungi diharapkan
+menghasilkan `401 UNAUTHORIZED`; kondisi tersebut merupakan hasil test yang benar.
+Respons REST menggunakan `items` untuk daftar dan `error.code` untuk kesalahan,
+tanpa envelope `data.myHistory.edges` atau `errors[].extensions`.
 
 ## Contoh response error
 
@@ -560,6 +618,9 @@ Jika batas terlampaui, contoh response `429 Too Many Requests` dengan header
 
 Tunggu sesuai `Retry-After` sebelum mencoba lagi. Permintaan rekomendasi yang
 masih diproses untuk pengguna yang sama memakai kode `RECOMMENDATION_IN_PROGRESS`.
+Nilai `retry_after` untuk kondisi tersebut berasal dari sisa masa berlaku lock,
+bukan estimasi durasi kerja LLM. Lock normalnya dilepas setelah proses selesai
+atau gagal; jika worker terputus sebelum cleanup, lock menunggu kedaluwarsa.
 Jika kapasitas rekomendasi seluruh aplikasi penuh, API mengembalikan
 `429` dengan kode `LLM_CAPACITY_EXCEEDED` dan header `Retry-After: 1`.
 Permintaan ini tidak memanggil LLM dan tidak mengurangi kuota rekomendasi pengguna.
@@ -671,6 +732,10 @@ Lock membatasi satu proses rekomendasi aktif per pengguna.
 `RECOMMENDATION_LOCK_TTL_SECONDS` harus lebih besar dari `LLM_TIMEOUT_SECONDS`.
 Batas provider LLM mengikuti layanan yang digunakan.
 
+Untuk Vercel, sesuaikan `LLM_TIMEOUT_SECONDS` dengan batas durasi function pada
+deployment dan sisakan waktu untuk inisialisasi serta penyimpanan hasil. Jangan
+menganggap timeout contoh 600 detik berlaku pada semua paket Vercel.
+
 Untuk deployment lain, sesuaikan nilai pada `.env` dengan tabel di atas dan
 buat ulang container API agar environment baru terbaca, misalnya
 `docker compose up -d --build api`. Jangan menimpa kredensial yang sudah ada.
@@ -767,13 +832,22 @@ python -m pytest -q
 | [tests/test_rest_api.py](tests/test_rest_api.py) | Endpoint, autentikasi, privasi riwayat, pagination, dan penanganan error |
 | [tests/test_limits.py](tests/test_limits.py) | Batas input/output, kapasitas halaman, kuota rekomendasi, dan pelebaran kolom nama daerah |
 | [tests/test_your_food.py](tests/test_your_food.py) | Konten Unicode tanpa batas format khusus, respons katalog/rekomendasi, snapshot lama, dan schema OpenAPI |
+| [tests/test_database_pooler.py](tests/test_database_pooler.py) | TLS, konfigurasi pool Supabase, prepared statement, dan integrasi PostgreSQL opsional |
+| [tests/test_error_handling.py](tests/test_error_handling.py) | Respons error, konflik pendaftaran, kegagalan cleanup, dan logout tanpa Redis |
+| [tests/test_openapi_security.py](tests/test_openapi_security.py) | Deklarasi Bearer dan penolakan kredensial pada endpoint terlindungi |
+| [tests/test_llm_capacity.py](tests/test_llm_capacity.py) | Konfigurasi kapasitas global LLM dan integrasi konkurensi/masa berlaku slot Redis opsional |
 | [tests/conftest.py](tests/conftest.py) | Katalog uji, database SQLite, identitas pengguna, dan pengganti rate limiter |
 
-Tes tidak membutuhkan PostgreSQL, Redis, atau LLM yang berjalan. Konfigurasi
-uji diambil dari `.env.example` dengan kredensial khusus pengujian.
+Suite default memakai SQLite, mock autentikasi database, mock rate limiter,
+dan provider LLM pengganti. PostgreSQL, Redis, dan LLM nyata tidak diperlukan
+untuk suite default. Konfigurasi uji diambil dari `.env.example` dengan kredensial
+khusus pengujian; hasil suite ini tidak menggantikan verifikasi integrasi cloud.
 
 Pengujian kapasitas LLM berada di `tests/test_llm_capacity.py`. Untuk menjalankan
 uji integrasi konkurensi, pelepasan slot, dan pemulihan slot kedaluwarsa dengan
 Redis nyata, set `TEST_REDIS_URL`, lalu jalankan `python -m pytest -q`.
 Tanpa variabel tersebut, dua uji integrasi Redis dilewati. Kunci pengujian memakai
 namespace acak dan dibersihkan setelah pengujian.
+
+Set `TEST_POSTGRES_URL` untuk menjalankan satu uji integrasi PostgreSQL tambahan.
+Tanpa `TEST_REDIS_URL` dan `TEST_POSTGRES_URL`, tiga test integrasi dilewati.
